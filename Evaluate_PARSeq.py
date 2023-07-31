@@ -19,10 +19,10 @@ dataset = sys.argv[1]
 
 # Load model and image transforms
 print("Loading model...")
-parseq = torch.hub.load('baudm/parseq', 'parseq', pretrained=True).eval()
+parseq = torch.hub.load('baudm/parseq', 'parseq', pretrained=False).eval()
 img_transform = SceneTextDataModule.get_transform(parseq.hparams.img_size)
 
-# Load the processed IIIT5K dataset file
+# Load the pre-processed dataset file
 with open(dataset) as input_file:
     images_root = input_file.readline().strip()
     data = [line.strip().split(" ") for line in input_file.readlines()]
@@ -64,11 +64,12 @@ for image_data in data[:amount_of_data]:
         performance_lower_alphabet_only[1] += 1
         if label[0].lower() == image_data[1].lower():
             performance_lower_alphabet_only[0] += 1
-        else:
-            print(f"\n{label[0]}, {image_data[1]}")
     
+    # Print progress
     print(f"Evaluating images: {performance[1]/amount_of_data:.1%}", end="\r")
 print()
+
+# Print results
 print(f"{performance[1]} images evaluated, accuracy: {performance[0]/performance[1]:.1%}")
 print(f"Case insensitive accuracy: {performance_case_insensitive/performance[1]:.1%}")
 print(f"Small letters only accuracy: {performance_lower_alphabet_only[0]/performance_lower_alphabet_only[1]:.1%}")
