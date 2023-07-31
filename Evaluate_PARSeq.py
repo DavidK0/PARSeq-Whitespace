@@ -9,8 +9,6 @@ import numpy
 from strhub.data.module import SceneTextDataModule
 from torchvision import transforms
 
-from memory_profiler import profile
-
 # Get the images location
 if len(sys.argv) < 2 or not os.path.isfile(sys.argv[1]):
     print("Usage: {sys.argv[0]} [dataset]")
@@ -19,7 +17,7 @@ dataset = sys.argv[1]
 
 # Load model and image transforms
 print("Loading model...")
-parseq = torch.hub.load('baudm/parseq', 'parseq', pretrained=False).eval()
+parseq = torch.hub.load('baudm/parseq', 'parseq', pretrained=True).eval()
 img_transform = SceneTextDataModule.get_transform(parseq.hparams.img_size)
 
 # Load the pre-processed dataset file
