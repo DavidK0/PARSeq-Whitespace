@@ -1,5 +1,5 @@
 # PARSeq Experiments
-In this repository I experiment with evaluating [PARSeq](https://github.com/baudm/parseq) on three of the evaluation datasets from the [original PARSeq paper](https://link.springer.com/chapter/10.1007/978-3-031-19815-1_11). I also analyze the original training, validation, and testing datat of PARSeq to find whitespace in the labels. 
+In this repository I experiment with evaluating [PARSeq](https://github.com/baudm/parseq) on three of the evaluation datasets from the [original PARSeq paper](https://link.springer.com/chapter/10.1007/978-3-031-19815-1_11). I also analyze the original training data of PARSeq to find whitespace in the labels. 
 
 ## The IIIT 5K-word Dataset
 The first dataset I tried was the [IIIT 5K-word dataset](https://cvit.iiit.ac.in/research/projects/cvit-projects/the-iiit-5k-word-dataset) \(IIIT5K\). Upon manual inspection I found that the training split of this dataset has at least 9 out of the 2000 images mis-labeled. For example the official logo for Flickr is included in the dataset, but it is labeled "FLICKER". All labels are case-insensitive and in all-caps. Many images contain punctuation which is not present in the label.
