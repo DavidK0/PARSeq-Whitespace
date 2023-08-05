@@ -1,4 +1,4 @@
-![image](https://github.com/DavidK0/PARSeq-Experiments/assets/9288945/c7c00faa-89d0-4fe6-bb67-610587a4b6ff)# PARSeq Experiments
+# PARSeq Experiments
 In this repository I experiment with evaluating [PARSeq](https://github.com/baudm/parseq) on three of the evaluation datasets from the [original PARSeq paper](https://link.springer.com/chapter/10.1007/978-3-031-19815-1_11). I also analyze the original training, validation, and testing datat of PARSeq to find whitespace in the labels. 
 
 ## The IIIT 5K-word Dataset
