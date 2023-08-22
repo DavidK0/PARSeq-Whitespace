@@ -1,31 +1,5 @@
-# PARSeq Experiments
-In this repository I experiment with evaluating [PARSeq](https://github.com/baudm/parseq) on three of the evaluation datasets from the [original PARSeq paper](https://link.springer.com/chapter/10.1007/978-3-031-19815-1_11). I also analyze the original training data of PARSeq to find whitespace in the labels. 
-
-## The IIIT 5K-word Dataset
-The first dataset I tried was the [IIIT 5K-word dataset](https://cvit.iiit.ac.in/research/projects/cvit-projects/the-iiit-5k-word-dataset) \(IIIT5K\). Upon manual inspection I found that the training split of this dataset has at least 9 out of the 2000 images mis-labeled. For example the official logo for Flickr is included in the dataset, but it is labeled "FLICKER". All labels are case-insensitive and in all-caps. Many images contain punctuation which is not present in the label.
-
-To evaluate IIIT5K I used three accuracies. The first is raw word accuracy without processing labels. The second is case-insensitive accuracy. The third is case-insensitive accuracy when only considering images in which PARSeq does not detect a non-alphabetic character. The performance of a pretrained PARSeq on the test split of IIIT5K \(3000 images\) with each of the accuracies is given in the table below.
-
-|Raw  |Case-insensitive|Alphabet only|
-|-----|----------------|-------------|
-|51.4%|87.7%           |98.3%        |
-
-The results show that PARSeq has terrible on the raw IIIT5K, but this is due to shortcomings of the dataset. When ignoring capitalization performance increases dramatically. Performance would likely increase even more if IIIT5K did not include un-labeled punctuation.
-
-## The Curve Text Dataset
-The second dataset I tried was the [Curve Text dataset](http://cs-chan.com/downloads_cute80_dataset.html) \(CUTE80\). This dataset appears to be for the task of scene text detection rather than scene text recognition. The dataset contains labels for the position of text in images but not for the text itself. I am unsure how to procede from here.
-
-## The Street View Text Dataset
-The third dataset I tried was the [Street View Text dataset](http://www.iapr-tc11.org/mediawiki/index.php/The_Street_View_Text_Dataset) \(SVT\). Like CUTE80, this dataset is intended to be used with scene text detection or uncropped scene text recognition. I pre-processed this dataset to produce word-level cropped images and evaluated PARSeq in the same manner as I did with IIIT5K. The three accuracies are given below.
-
-|Raw  |Case-insensitive|Alphabet only|
-|-----|----------------|-------------|
-|70.5%|96.1%           |97.8%        |
-
-The results show that, compared to IIIT5K, PARSeq had a high raw score amd case-insensitive score but lower alphabet-only score. This suggests that fewer images in SVT were challenging due to un-expected case differences or un-expected puncuation difference, but also that the images for which PARSeq did not detect punctuation were harder to recognize.
-
 ## Whitespace in PARSeq's data
-By default, PARSeq's dataset loader will remove all whitespace from labels (ex. "Main St" becomes "MainSt"). Disabling the removal of whitespace could allow PARSeq to recognize spaces. To better understand the presence of whitespace in PARSeq's data I counted the number of data instances that countain whitespace in each of the non-synthetic training datasets. Those counts are given below, along with some examples.
+In this repository I experiment with improving PARSeq's ability to recognize whitespace. By default, PARSeq's dataset loader will remove all whitespace from labels (ex. "Main St" becomes "MainSt"). Disabling the removal of whitespace could allow PARSeq to recognize spaces. To better understand the presence of whitespace in PARSeq's data I first counted the number of data instances that countain whitespace in each of the non-synthetic training datasets. Those counts are given below, along with some examples.
 
 |Dataset |Total Instances|w/ whitespace|Example            |
 |--------|---------------|-------------|-------------------|
@@ -42,3 +16,13 @@ By default, PARSeq's dataset loader will remove all whitespace from labels (ex. 
 In total there are about 3.1 million data instances but only 33.5k\(1.1%\) of them contain whitespace. 33.5k instances could be enough to fine-tune on just those images, but it also might be helpful to produce even more whitespace training data with the help of synthetic data generators like in [MJSynth](https://arxiv.org/abs/1406.2227) and [SynthText](https://arxiv.org/abs/1604.06646).
 
 I also counted the number of data instances with whitespace in PARSEq's validation and test split. The validation split contained only 55 data instances with whitespace, and the test split has 17061 instances, 16976 of which come from Uber. With all splits combines, there are 50.6k data instances with whitespace. If these were re-organized into new splits with a 80-10-10 ratio that would leave 40.5k for training and 5.1k for validation and training.
+
+Next I tried training a PARSeq model from scratch on a subset of the whitespace data. I used 3858 images for training and 473 for validation. The model was trained for 2000 epochs using with the same settings as the original model, except that whitespace removal was disabled and the character set was extended to include the space character " ". 3858 is not enough images to train this model, but it is enough to show that the model's loss converges. Below is a graph of the training loss over training iterations.
+
+<img src="https://github.com/DavidK0/PARSeq-Experiments/assets/9288945/496cd8d9-92c4-4918-bb5c-c3944968755e" alt="Alt Text" width="315" height="225">
+
+And here is a graph of the validation loss.
+
+<img src="https://github.com/DavidK0/PARSeq-Experiments/assets/9288945/e1bb495e-5ab3-44c1-b8e2-fbf9b6133ec9" alt="Alt Text" width="315" height="225">
+
+The two graphs above show that the model is training on the whitespace data, but this small test run is too small for the model to generalize to the validation data.
