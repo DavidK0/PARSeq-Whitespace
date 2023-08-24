@@ -1,10 +1,10 @@
 # This script opens a LMDB used to store data for PARSeq.
 # The data is analyzed and the amount of whitespace present is recorded.
 
-from sre_parse import WHITESPACE
-from string import whitespace
 import sys, os, re, glob
 import lmdb
+
+# This assumes parseq and the folder containing this script are in the same folder
 sys.path.append("../parseq")
 from strhub.data.utils import CharsetAdapter
 
