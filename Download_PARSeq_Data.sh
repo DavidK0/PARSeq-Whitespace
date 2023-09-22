@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# This script is used to download and process PARSeq's data.
+# This script is used to download and pre-process PARSeq's data.
+# This script should be run inside parseq. It will create the ''data' folder.
 # For more info, see https://github.com/baudm/parseq/blob/main/Datasets.md
 
 # Function to download files from a Google Drive folder
