@@ -1,0 +1,27 @@
+0. Pre-trained PARSeq model
+1. Train a PARSeq model from sratch using the original training data with whitespace removal disabled.
+2. Fine tune the pre-trained model on the original training data with whitespace removal disabled.
+2. Fine tune the pre-trained model on balanced whitespace/non-whitespace data.
+3. Fine tune the pre-trained model on only the whitespace data from the original trainin data.
+
+Steps to reproduce experiment 1:
+1. Clone PARSeq
+2. Download the [datasets](https://github.com/baudm/parseq/blob/main/Datasets.md)
+
+3. Create a file called 'whitespace.yaml' in /parseq/configs/charset/ with the following contents:
+model:
+  charset_train: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+
+4. Making the following edits to /parseq/configs/main.yaml
+line 4:
+  - charset: whitespace
+line 12:
+  charset_train: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+line 28:
+  remove_whitespace: false
+add this line:
+  load_ckpt: null
+
+5. Replace train.py with train_Custom.py (adds early stopping)
+
+For testing, using test_Whitespace.py instead of test.py
