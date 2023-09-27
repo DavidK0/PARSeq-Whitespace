@@ -69,5 +69,7 @@ with env.begin() as txn:
         pred, p = model.tokenizer.decode(p)
         print(f'{index}\t{label.ljust(30)}\t{pred[0]}')
 
-        # Save image
-        #image.save(os.path.join(args.output_path, f"{label}.jpg"))
+        # Save image        # Save image
+        save_path = os.path.join(args.output_path, f"{index}_label_{label}_pred_{pred[0]}.png")
+        image_to_save = Image.open(buf).convert('RGB')  # Re-open image to save in original format
+        image_to_save.save(save_path)

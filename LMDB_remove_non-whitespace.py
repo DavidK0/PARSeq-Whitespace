@@ -1,7 +1,6 @@
 # This script extracts whitespace STR data from PARSeq datasets.
 # This script opens all the LMDB databases found in the given folders and then saves the data instances
-#   which contain whitespace in the label. The data is re-organized into train, val, and test splits.
-#   The new datasets have the same structure as the original ones.
+#   which contain whitespace in the label. The data is re-organized into one new database.
 # This script has the option to include some percentage of non-whitespace data instances to be included.
 # Arguments:
 #   output database: a folder will be created here to store the new LMBD
@@ -32,24 +31,8 @@ parser.add_argument("-subset", action="store_true")
 parser.add_argument("--prob", type=float, default=0, help="The probability for each non-whitespace data instance to be included (0-1, default is 0)")
 args = parser.parse_args()
 
-# Initialize the random seed
-random.seed()
-
-# Define the data split ratios
-train_ratio = .8
-val_ratio = .1
-test_ratio = .1
-
-# Create directories for the output LMDB files based on the data splits.
+# Create the output directory
 os.mkdir(args.output_path)
-os.mkdir(os.path.join(args.output_path, "train"))
-os.mkdir(os.path.join(args.output_path, "val"))
-os.mkdir(os.path.join(args.output_path, "test"))
-
-# Define paths for each data split.
-train_split = os.path.join(args.output_path, "train/real")
-val_split = os.path.join(args.output_path, "val/val")
-test_split = os.path.join(args.output_path, "test/test")
 
 # Some default settings, with normalization and size filtering disabled
 normalize_unicode = False
@@ -66,33 +49,22 @@ def contains_whitespace(s: str):
 
 # This size is large enough to store the PARSeq's original data
 # The sizes are currently hardcoded making it hard to run this script on other data
-train_map_size = 650000000 * train_ratio
-val_map_size = 650000000 * val_ratio
-test_map_size = 650000000 * test_ratio
+map_size = 650000000
 # Add space for non-whitespace data
-train_map_size += 127733 * 3100000 * args.prob
-val_map_size += 127733 * 3100000 * args.prob
-test_map_size += 127733 * 3100000 * args.prob
+map_size += 127733 * 3100000 * args.prob
 # Remove space when making a subset of the data
 if args.subset:
     import random
-    train_map_size *= .1
-    val_map_size *= .1
-    test_map_size *= .1
-train_map_size = int(train_map_size)
-val_map_size = int(val_map_size)
-test_map_size = int(test_map_size)
+    random.seed()
+    map_size *= .1
+map_size = int(map_size)
 
 # Open the LMBDs
-train_env = lmdb.open(train_split, map_size=train_map_size)
-val_env = lmdb.open(val_split, map_size=val_map_size)
-test_env = lmdb.open(test_split, map_size=test_map_size)
+output_env = lmdb.open(args.output_path, map_size=map_size)
 
 # Create transactions for writing to the output databases
-with train_env.begin(write=True) as train_txn, val_env.begin(write=True) as val_txn, test_env.begin(write=True) as test_txn:
-    train_sample_index = 1  # Index for the new database
-    val_sample_index = 1  # Index for the new database
-    test_sample_index = 1  # Index for the new database
+with output_env.begin(write=True) as output_txn:
+    sample_index = 1  # Index for the new database
 
     # For each input folder, open it and find the databases
     for folder in args.input_paths:
@@ -144,37 +116,15 @@ with train_env.begin(write=True) as train_txn, val_env.begin(write=True) as val_
                         image = txn.get(image_key)
 
                         # Write data to the new database
-                        random_val = random.random()
-                        if random_val < train_ratio:
-                            # Get keys
-                            new_label_key = f'label-{train_sample_index:09d}'.encode()
-                            new_image_key = f'image-{train_sample_index:09d}'.encode()
-                            train_txn.put(new_label_key, label.encode())
-                            train_txn.put(new_image_key, image)
-                            train_sample_index += 1
-                        elif random_val < train_ratio + val_ratio:
-                            # Get keys
-                            new_label_key = f'label-{val_sample_index:09d}'.encode()
-                            new_image_key = f'image-{val_sample_index:09d}'.encode()
-                            val_txn.put(new_label_key, label.encode())
-                            val_txn.put(new_image_key, image)
-                            val_sample_index += 1
-                        else:
-                            # Get keys
-                            new_label_key = f'label-{test_sample_index:09d}'.encode()
-                            new_image_key = f'image-{test_sample_index:09d}'.encode()
-                            test_txn.put(new_label_key, label.encode())
-                            test_txn.put(new_image_key, image)
-                            test_sample_index += 1
+                        new_label_key = f'label-{sample_index:09d}'.encode()
+                        new_image_key = f'image-{sample_index:09d}'.encode()
+                        output_txn.put(new_label_key, label.encode())
+                        output_txn.put(new_image_key, image)
+                        sample_index += 1
 
                         num_instances += 1
                 print(f"{db_name} loaded, {num_instances} data instances found")
     # Write the number of samples
-    train_txn.put('num-samples'.encode(), str(train_sample_index - 1).encode())
-    val_txn.put('num-samples'.encode(), str(val_sample_index - 1).encode())
-    test_txn.put('num-samples'.encode(), str(test_sample_index - 1).encode())
+    output_txn.put('num-samples'.encode(), str(sample_index - 1).encode())
 
-print(f"\nTraining dataset has {train_sample_index - 1} data instances")
-print(f"Validation dataset has {val_sample_index - 1} data instances")
-print(f"Testing dataset has {test_sample_index - 1} data instances")
-print(f"Dataset saved to {os.path.abspath(args.output_path)}")
+print(f"\nNew dataset has {sample_index - 1} data instances, saved to {os.path.abspath(args.output_path)}")

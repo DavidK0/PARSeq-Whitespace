@@ -19,14 +19,13 @@
 # This script does not batch images for processing but instead process them individually, making it
 #   noticably slower than the original.
 
-import argparse
-import string
 import sys
+import time
 import re
-from dataclasses import dataclass
-from typing import List
+import argparse
 
 import torch
+from torchvision import transforms as T
 
 from tqdm import tqdm
 
@@ -38,41 +37,6 @@ def contains_whitespace(s: str):
     pattern = r'\S\s+\S'
     match = re.search(pattern, s)
     return match is not None
-
-@dataclass
-class Result:
-    dataset: str
-    num_samples: int
-    accuracy: float
-    ned: float
-    confidence: float
-    label_length: float
-
-
-def print_results_table(results: List[Result], file=None):
-    w = max(map(len, map(getattr, results, ['dataset'] * len(results))))
-    w = max(w, len('Dataset'), len('Combined'))
-    print('| {:<{w}} | # samples | Accuracy | 1 - NED | Confidence | Label Length |'.format('Dataset', w=w), file=file)
-    print('|:{:-<{w}}:|----------:|---------:|--------:|-----------:|-------------:|'.format('----', w=w), file=file)
-    c = Result('Combined', 0, 0, 0, 0, 0)
-    for res in results:
-        c.num_samples += res.num_samples
-        c.accuracy += res.num_samples * res.accuracy
-        c.ned += res.num_samples * res.ned
-        c.confidence += res.num_samples * res.confidence
-        c.label_length += res.num_samples * res.label_length
-        print(f'| {res.dataset:<{w}} | {res.num_samples:>9} | {res.accuracy:>8.2f} | {res.ned:>7.2f} '
-              f'| {res.confidence:>10.2f} | {res.label_length:>12.2f} |', file=file)
-    if c.num_samples != 0:
-        c.accuracy /= c.num_samples
-        c.ned /= c.num_samples
-        c.confidence /= c.num_samples
-        c.label_length /= c.num_samples
-    if len(results) > 1:
-        print('|-{:-<{w}}-|-----------|----------|---------|------------|--------------|'.format('----', w=w), file=file)
-        print(f'| {c.dataset:<{w}} | {c.num_samples:>9} | {c.accuracy:>8.2f} | {c.ned:>7.2f} '
-              f'| {c.confidence:>10.2f} | {c.label_length:>12.2f} |', file=file)
-
 
 @torch.inference_mode()
 def main():
@@ -91,17 +55,14 @@ def main():
     args, unknown = parser.parse_known_args()
     kwargs = parse_model_args(unknown)
 
-    charset_test = string.digits + string.ascii_lowercase
-    if args.cased:
-        charset_test += string.ascii_uppercase
-    if args.punctuation:
-        charset_test += string.punctuation
-    #kwargs.update({'charset_test': charset_test})
-    print(f'Additional keyword arguments: {kwargs}')
+
+    kwargs.update({'charset_test': "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "})
+    #print(f'Additional keyword arguments: {kwargs}')
 
     model = load_from_checkpoint(args.checkpoint, **kwargs).eval().to(args.device)
 
     hp = model.hparams
+    #print([(x,hp[x]) for x in hp])
     datamodule = SceneTextDataModule(args.data_root, '_unused_', hp.img_size, hp.max_label_length, hp.charset_train,
                                      hp.charset_test, args.batch_size, args.num_workers, False, rotation=args.rotation,
                                      remove_whitespace=False)
@@ -113,105 +74,129 @@ def main():
         test_set += SceneTextDataModule.TEST_CUSTOM
     if args.new:
         test_set += SceneTextDataModule.TEST_NEW
-    test_set = sorted(set(test_set))
+
+    test_set = sorted(set([test_set[0]]))
 
     results = {}
     non_whitespace_results = {}
     whitespace_results = {}
     max_width = max(map(len, test_set))
     for name, dataloader in datamodule.test_dataloaders(test_set).items():
-        # all data
-        total = 0
-        correct = 0
-        ned = 0
-        confidence = 0
-        label_length = 0
 
-        # no whitespace
-        non_whitespace_total = 0
-        non_whitespace_correct = 0
-        non_whitespace_ned = 0
-        non_whitespace_confidence = 0
-        non_whitespace_label_length = 0
-        
-        # white-space
-        whitespace_total = 0
-        whitespace_correct = 0
-        whitespace_ned = 0
-        whitespace_confidence = 0
-        whitespace_label_length = 0
+        results[name] = {'total': 0, 'correct': 0}
+        non_whitespace_results[name] = {'total': 0, 'correct': 0}
+        whitespace_results[name] = {'total': 0, 'correct': 0}
 
         for batch_imgs, batch_labels in tqdm(iter(dataloader), desc=f'{name:>{max_width}}'):
-            for img, label in zip(batch_imgs, batch_labels):
-                img = img.unsqueeze(0).to(model.device)
-                res = model.test_step((img, [label]), -1)['output']
 
-                # all data
-                total += res.num_samples
-                correct += res.correct
-                ned += res.ned
-                confidence += res.confidence
-                label_length += res.label_length
+            list_imgs = [img.unsqueeze(dim=0) for img in batch_imgs]
+            batch_pred_labels = parseq_batch_inference(list_imgs , model, eps=0.2, batch_size=16, device=torch.device("cuda"))
 
-                if not contains_whitespace(label):
-                    # no whitespace
-                    non_whitespace_total += res.num_samples
-                    non_whitespace_correct += res.correct
-                    non_whitespace_ned += res.ned
-                    non_whitespace_confidence += res.confidence
-                    non_whitespace_label_length += res.label_length
+            for img, label, predicted_label in zip(batch_imgs, batch_labels, batch_pred_labels):
+                results[name]['total'] += 1
+
+                if label == predicted_label:
+                    results[name]['correct'] += 1
+                
+                if contains_whitespace(label):
+                    whitespace_results[name]['total'] += 1
+                    if label == predicted_label:
+                        whitespace_results[name]['correct'] += 1
                 else:
-                    # white-space
-                    whitespace_total += res.num_samples
-                    whitespace_correct += res.correct
-                    whitespace_ned += res.ned
-                    whitespace_confidence += res.confidence
-                    whitespace_label_length += res.label_length
+                    non_whitespace_results[name]['total'] += 1
+                    if label == predicted_label:
+                        non_whitespace_results[name]['correct'] += 1
+                #else:
+                #    print(label, predicted_label)
+    for name in results:
+        accuracy = results[name]['correct'] / results[name]['total']
+        accuracy_non_whitespace = non_whitespace_results[name]['correct'] / non_whitespace_results[name]['total']
+        accuracy_whitespace = whitespace_results[name]['correct'] / whitespace_results[name]['total']
+        print(name)
+        print(f"Overall {accuracy:.2%} out of {results[name]['total']}")
+        print(f"Non whitespace {accuracy_non_whitespace:.2%} out of {non_whitespace_results[name]['total']}")
+        print(f"Whitespace {accuracy_whitespace:.2%} out of {whitespace_results[name]['total']}")
+        print()
 
-        # all data
-        accuracy = 100 * correct / total
-        mean_ned = 100 * (1 - ned / total)
-        mean_conf = 100 * confidence / total
-        mean_label_length = label_length / total
-        results[name] = Result(name, total, accuracy, mean_ned, mean_conf, mean_label_length)
+# reading configuration
+charset = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+BOS = '[B]'
+EOS = '[E]'
+PAD = '[P]'
+specials_first = (EOS,)
+specials_last = (BOS, PAD)
+itos = specials_first + tuple(charset) + specials_last
+stoi = {s: i for i, s in enumerate(itos)}
+eos_id, bos_id, pad_id = [stoi[s] for s in specials_first + specials_last]
+itos = specials_first + tuple(charset) + specials_last
 
-        # no whitespace
-        non_whitespace_accuracy = 100 * non_whitespace_correct / non_whitespace_total if non_whitespace_total != 0 else 0
-        non_whitespace_mean_ned = 100 * (1 - non_whitespace_ned / non_whitespace_total) if non_whitespace_total != 0 else 0
-        non_whitespace_mean_conf = 100 * non_whitespace_confidence / non_whitespace_total if non_whitespace_total != 0 else 0
-        non_whitespace_mean_label_length = non_whitespace_label_length / non_whitespace_total if non_whitespace_total != 0 else 0
-        non_whitespace_results[name] = Result(name, non_whitespace_total, non_whitespace_accuracy, non_whitespace_mean_ned, non_whitespace_mean_conf, non_whitespace_mean_label_length)
+# decode the model output
+def tokenizer_filter(probs, ids):
+    ids = ids.tolist()
+    try:
+        eos_idx = ids.index(eos_id)
+    except ValueError:
+        eos_idx = len(ids)  # Nothing to truncate.
+    # Truncate after EOS
+    ids = ids[:eos_idx]
+    probs = probs[:eos_idx + 1]  # but include prob. for EOS (if it exists)
+    return probs, ids
 
-        # white-space
-        whitespace_accuracy = 100 * whitespace_correct / whitespace_total if whitespace_total != 0 else 0
-        whitespace_mean_ned = 100 * (1 - whitespace_ned / whitespace_total) if whitespace_total != 0 else 0
-        whitespace_mean_conf = 100 * whitespace_confidence / whitespace_total if whitespace_total != 0 else 0
-        whitespace_mean_label_length = whitespace_label_length / whitespace_total if whitespace_total != 0 else 0
-        whitespace_results[name] = Result(name, whitespace_total, whitespace_accuracy, whitespace_mean_ned, whitespace_mean_conf, whitespace_mean_label_length)
+def ids2tok(token_ids):
+    tokens = [itos[i] for i in token_ids]
+    return ''.join(tokens)
 
+def decode(token_dists):
+    """Decode a batch of token distributions.
+    Args:
+        token_dists: softmax probabilities over the token distribution. Shape: N, L, C
+        raw: return unprocessed labels (will return list of list of strings)
 
-    result_groups = dict()
+    Returns:
+        list of string labels (arbitrary length) and
+        their corresponding sequence probabilities as a list of Tensors
+    """
+    batch_tokens = []
+    batch_probs = []
+    for dist in token_dists:
+        probs, ids = dist.max(-1)  # greedy selection
+        probs, ids = tokenizer_filter(probs, ids)
+        tokens = ids2tok(ids)
+        batch_tokens.append(tokens)
+        batch_probs.append(probs)
+    return batch_tokens, batch_probs
 
-    if args.std:
-        result_groups.update({'Benchmark (Subset)': SceneTextDataModule.TEST_BENCHMARK_SUB})
-        result_groups.update({'Benchmark': SceneTextDataModule.TEST_BENCHMARK})
-    if args.custom:
-        result_groups.update({'Custom': SceneTextDataModule.TEST_CUSTOM})
-    if args.new:
-        result_groups.update({'New': SceneTextDataModule.TEST_NEW})
+def parseq_batch_inference(images, model, eps, batch_size, device):
+    N = len(images)
+    # print("number of text {}".format(N))
+    if N//batch_size == N/batch_size:
+        n_batch = N//batch_size
+    else:
+        n_batch = N//batch_size + 1
+    labels = []
+    Total_time = 0
+    for i in range(n_batch):
+        # print(list(range((i-1)*batch_size,batch_size*i)))
+        if batch_size*(i+1) <= N:
+            input_holder = torch.cat(images[(i)*batch_size:batch_size*(i+1)], 0)
+        else:
+            input_holder = torch.cat(images[(i)*batch_size:N], 0)
+        
+        start = time.time()
+        with torch.no_grad():  
+            logits = model(input_holder.to(device))
+        end = time.time()     
+        Total_time += (end-start)
+        pred = logits.softmax(-1)
+        readings, confidences = decode(pred)
+        
+        for i, reading in enumerate(readings):
+            # print(reading)
+            confidence = confidences[i]
+            labels.append("".join([reading[i] for i in range(len(reading)) if confidence[i] > eps]))
 
-    with open(args.checkpoint + '.log.txt', 'w') as f:
-        for out in [sys.stdout]:
-            for group, subset in result_groups.items():
-                print(f'{group} set:', file=out)
-                print("All data", file=out)
-                print_results_table([results[s] for s in subset], out)
-                print("Non-whitespace data", file=out)
-                print_results_table([non_whitespace_results[s] for s in subset], out)
-                print("Whitespace data", file=out)
-                print_results_table([whitespace_results[s] for s in subset], out)
-                print('\n', file=out)
-
+    # print("The total time cost is {}".format(Total_time))
+    return labels
 
 if __name__ == '__main__':
     main()
