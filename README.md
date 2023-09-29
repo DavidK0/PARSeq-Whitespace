@@ -16,7 +16,33 @@ In this repository train a PARSeq from scratch so that it can predict whitespace
 In total there are about 3.1 million data instances but only 33.5k\(1.1%\) of them contain whitespace. I also counted the number of data instances with whitespace in PARSEq's validation and test split. The validation split contained only 55 data instances with whitespace, and the test split has 17061 instances, 16976 of which come from Uber.
 
 # Methadology
+To reproduce what I did, follow these steps.
+1. Clone PARSeq
 
+2. Download the [datasets](https://github.com/baudm/parseq/blob/main/Datasets.md). You can optionally use Download_PARSeq_Data.sh from this repo.
+
+3. Create a file called 'whitespace.yaml' in /parseq/configs/charset/ with the following contents (note the whitespace character):
+
+```
+model:
+  charset_train: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+```
+
+4. Making the following edits to /parseq/configs/main.yaml
+
+line 4:
+`  - charset: whitespace`
+
+line 12:
+`  charset_train: "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "`
+  
+line 28:
+`  remove_whitespace: false`
+  
+add this line:
+`  load_ckpt: null`
+
+5. For testing, using test_Whitespace.py instead of test.py
 
 # Results
 ![image](https://github.com/DavidK0/PARSeq-Whitespace/assets/9288945/d2a95537-0edb-421c-9c56-c9daa13582e7)
